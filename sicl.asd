@@ -23,7 +23,8 @@
 
 (defsystem sicl
   :version "0.4.0"
-  :depends-on (lexer yacc cl-ppcre puri rdf-store cl-interpol)
+  :depends-on (lexer yacc cl-ppcre puri cl-rdfxml
+		     rdf-utils cl-interpol)
   :components ((:file "package")
                (:file "lexer" :depends-on ("package"))
 	       (:file "parser" :depends-on ("lexer"))

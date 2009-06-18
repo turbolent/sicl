@@ -47,15 +47,6 @@
   (regex-replace-all unicode-scanner string
 		     #'resolve-unicode))
 
-(defun maybe-use-base (iri)
-  (let ((uri (uri iri)))
-    (if (and *parse-base* 
-	     (or (eq #\# (aref iri 0)) ; hack :(
-		 (eq (first (uri-parsed-path uri))
-		     :relative)))
-	(concatenate 'string *parse-base* iri)
-	iri)))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun prefix-it-up (one two-and-three)
     "Take (4 (+ 5)), return (+ 4 5).
@@ -65,8 +56,13 @@
      '(funcall-sparql-uri !some-uri a param1)"
     (if (eq (car two-and-three)
             'funcall-sparql-uri)
-	(concatenate 'list (butlast two-and-three) (list one) (last two-and-three))
-	(list (car two-and-three) one (cadr two-and-three))))
+	(concatenate 'list
+		     (butlast two-and-three)
+		     (list one)
+		     (last two-and-three))
+	(list (car two-and-three)
+	      one
+	      (cadr two-and-three))))
   
   (defun strip-brackets (br1 exp br2)
     (declare (ignore br1 br2))
@@ -75,7 +71,7 @@
   (defun record-blank-node (node)
     (if (member node *used-blank-nodes*)
 	(error "Blank node used in different BGPs.")
-      (progn (push node *bgp-blank-nodes*)
+	(progn (push node *bgp-blank-nodes*)
 	     node))))
 
 (defmethod print-object ((object yacc::parser) stream)
@@ -99,8 +95,9 @@
   ;; http://www.w3.org/TR/rdf-sparql-query/#queryString
   (setf string (process-unicode string))  
 
-  (let ((rdf-store::*namespaces* (make-hash-table :test 'equal))
-	(*parse-base* default-base)
+  (let ((rdf-utils::*namespaces* (make-hash-table :test 'equal))
+	(rdf-utils::*parse-base* default-base)
+	(cl-rdfxml::*blank-nodes* (make-hash-table :test 'equal))
 	(*used-blank-nodes* (list))
 	(*bgp-blank-nodes* (list)))
     (loop for (prefix . uri) in default-prefixes
@@ -696,7 +693,7 @@
      (OPEN-BRACKET PropertyListNotEmpty CLOSE-BRACKET
 		   #'(lambda (br1 prop-pairs br2)
 		       (declare (ignore br1 br2))
-		       (let ((var (blank)))
+		       (let ((var (blank-node)))
 			 #+:debug (format t "BlankNodePropertyList: ~S, ~S~%"
 					  var prop-pairs)
 			 (mapcar #'(lambda (pair)
@@ -709,7 +706,7 @@
 		 #'(lambda (open collection close)
 		     (declare (ignore open close))
 		     (let* ((nested-triples (remove-if-not #'listp collection))
-			    (triples (let ((blank (blank)))
+			    (triples (let ((blank (blank-node)))
 				       (loop for nested = -1
 					  for (first . rest) on collection
 					  collect (list 'triple blank
@@ -723,7 +720,7 @@
 							!rdf:rest
 							(if (null rest)
 							    !rdf:nil
-							  (setf blank (blank))))))))
+							  (setf blank (blank-node))))))))
 		       (dolist (nested nested-triples)
 			 (nconc triples nested))
 		       triples))))
@@ -1011,11 +1008,16 @@
      (String
       #'string)
      (String LANGTAG
-	     #'make-language-literal)
+	     #'(lambda (string language)
+		 (make-instance 'plain-literal
+				:string string
+				:language language)))
      (String TYPE IRIref
 	     #'(lambda (value type iri)
 		 (declare (ignore type))
-		 (make-datatype-literal value iri))))
+		 (make-instance 'typed-literal
+				:string value
+				:datatype iri))))
    
     ;; [61] NumericLiteral ::= NumericLiteralUnsigned | 
     ;;                         NumericLiteralPositive |
@@ -1063,13 +1065,27 @@
     ;; [67] IRIref ::= IRI_REF | PrefixedName
     (IRIref
      (IRI-REF
-      #'(lambda (iri)
-	  (intern-uri
-	   (uri (maybe-use-base iri)))))
+      #'(lambda (uri)
+	  (print "IRI-REF")
+	  (print uri)
+	  (let ((uri* (parse-uri uri)))
+	    (intern-uri
+	     (uri
+	      (cond ((eq #\# (aref uri 0))
+		     (concatenate 'string rdf-utils::*parse-base* uri))
+		    ((eq (first (uri-parsed-path uri*))
+			 :relative)
+		     (merge-uris (parse-uri uri)
+				 (parse-uri *parse-base*)))
+		    (t uri)))))))
      (PrefixedName
       #'(lambda (name)
-	  (intern-uri 
-	   (uri (maybe-use-base (expand-qname name)))))))
+	  (print "PrefixedName")
+	  (print name)
+	  (let ((expanded (expand-qname name)))
+	    (if (typep expanded 'string)
+		(intern-uri (uri expanded))
+		expanded)))))
     
     ;; [68] PrefixedName ::= PNAME_LN | PNAME_NS
     (PrefixedName

@@ -20,5 +20,6 @@
   (:export :parse-sparql)
   (:use :cl :lexer :yacc 
 	:cl-ppcre :puri
-	:rdf-store
+	:cl-rdfxml
+	:rdf-utils
 	:cl-interpol))

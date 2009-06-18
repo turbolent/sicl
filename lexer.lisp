@@ -183,7 +183,8 @@
   (pname-ln (pname-ns pn-local))
 
   ;; [73] BLANK_NODE_LABEL ::= '_:' PN_LOCAL
-  (blank-node-label ("_:" pn-local) #'intern)
+  (blank-node-label ("_:(" pn-local ")")
+		    #'blank-node)
   
   ;; [97] VARNAME ::= ( PN_CHARS_U | [0-9] ) 
   ;;                  ( PN_CHARS_U | [0-9] | #x00B7 | [#x0300-#x036F] | [#x203F-#x2040] )*
